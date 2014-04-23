@@ -1,4 +1,9 @@
 import java.io.IOException;
+import java.net.Inet4Address;
+import java.net.InetAddress;
+import java.net.NetworkInterface;
+import java.net.SocketException;
+import java.util.Enumeration;
 import java.util.List;
 
 import javax.servlet.ServletException;
@@ -19,8 +24,8 @@ public class OpenID extends HttpServlet {
 	/** Open ID マネージャインスタンス。複数作らない方が良いらしい。 */
 	public ConsumerManager manager;
 	/** Open ID サービスからログイン後に戻ってくる URL。 */
-	private static final String RETURN_URL = "http://localhost:8080/OpenIDTest/result";
-
+	private static String returnUrl;
+	
 	@Override
 	public void init() throws ServletException {
 		manager = new ConsumerManager();
@@ -65,7 +70,7 @@ public class OpenID extends HttpServlet {
 			session.setAttribute("discovered", discovered);
 
 			// Open ID プロバイダに送信する AuthRequest メッセージ取得
-			AuthRequest authReq = manager.authenticate(discovered, RETURN_URL);
+			AuthRequest authReq = manager.authenticate(discovered, resolveHostAddress());
 
 			// Open ID プロバイダにリダイレクト
 			res.sendRedirect(authReq.getDestinationUrl(true));
@@ -108,5 +113,33 @@ public class OpenID extends HttpServlet {
 		} catch (Exception e) {
 			throw new ServletException(e);
 		}
+	}
+	
+	private String resolveHostAddress() {
+		if (returnUrl == null) {
+			try {
+				Enumeration<NetworkInterface> enuIfs = NetworkInterface.getNetworkInterfaces();
+				while (returnUrl == null && enuIfs.hasMoreElements()) {
+					NetworkInterface ni = (NetworkInterface) enuIfs.nextElement();
+					Enumeration<InetAddress> enuAddrs = ni.getInetAddresses();
+					while (enuAddrs.hasMoreElements()) {
+						InetAddress addr = (InetAddress) enuAddrs.nextElement();
+						if (addr instanceof Inet4Address) {
+							String ip4 = addr.getHostAddress();
+							if (!addr.equals("127.0.0.1") && !addr.equals("localhost")) {
+								returnUrl = "http://" + ip4 + ":8080/OpenIDTest/result";
+								break;
+							}
+						}
+					}
+				}
+			} catch (SocketException e) {
+				e.printStackTrace();
+			}
+			if (returnUrl == null) {
+				throw new Error();
+			}
+		}
+		return returnUrl;
 	}
 }
